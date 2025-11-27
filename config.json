@@ -1,16 +1,60 @@
 {
-  "watch_path": "./watch",
+  "watch_paths": ["./watch"],
   "ai_engine": {
     "url": "http://localhost:11434/api/generate",
-    "model": "moondream"
+    "models": {
+      "vision": "moondream",
+      "text": "llama3.2:3b",
+      "code": "deepseek-coder:1.3b"
+    },
+    "timeout_secs": 120,
+    "retries": 3
   },
   "rules": {
     "sanitize": true,
     "date_prefix": true,
-    "max_length": 50
+    "max_length": 50,
+    "auto_categorize": true,
+    "duplicate_detection": true
   },
   "prompts": {
     "image": "Analyze this image and generate a concise, descriptive filename (max 5 words). Use snake_case. Do not include the file extension. Return ONLY the filename.",
-    "document": "Summarize the header or title of this document text into a concise filename (max 5 words). Use snake_case. Return ONLY the filename."
+    "document": "Summarize this document into a concise filename (max 5 words). Use snake_case. Return ONLY the filename.",
+    "audio": "Based on this audio metadata, suggest a descriptive filename (max 5 words). Use snake_case. Return ONLY the filename.",
+    "video": "Analyze these video keyframes and suggest a descriptive filename (max 5 words). Use snake_case. Return ONLY the filename.",
+    "code": "Analyze this code structure and suggest a descriptive filename (max 5 words). Use snake_case. Return ONLY the filename.",
+    "archive": "Based on these archive contents, suggest a descriptive filename (max 5 words). Use snake_case. Return ONLY the filename."
+  },
+  "analyzers": {
+    "image": {
+      "enabled": true,
+      "formats": ["jpg", "jpeg", "png", "webp", "gif", "bmp", "tiff", "tif", "heic", "heif", "avif", "svg"]
+    },
+    "pdf": {
+      "enabled": true,
+      "extract_text": true,
+      "rasterize_pages": 1
+    },
+    "audio": {
+      "enabled": true,
+      "use_metadata": true,
+      "transcribe": false
+    },
+    "video": {
+      "enabled": true,
+      "keyframes": 5
+    },
+    "code": {
+      "enabled": true,
+      "languages": ["rust", "python", "javascript", "typescript", "go", "java"]
+    }
+  },
+  "web": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 8080
+  },
+  "database": {
+    "path": "panoptes.db"
   }
 }

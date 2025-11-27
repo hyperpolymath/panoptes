@@ -3,332 +3,384 @@
 
 //! Panoptes: Local AI File Scanner & Renamer
 //!
-//! A Rust-based file system watcher that uses local AI (Moondream via Ollama)
-//! to automatically rename images and documents based on their visual content.
+//! A comprehensive file analysis and organization system using local AI models.
+//! Version 3.0 - Full plugin architecture with web UI and database support.
 
-use base64::{engine::general_purpose, Engine as _};
 use chrono::Local;
-use clap::Parser;
-use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::channel;
+use std::sync::Arc;
 use std::time::Duration;
-use std::{fs, io::Write};
-use thiserror::Error;
 use tokio::signal;
 use tokio::sync::watch;
 use tracing::{debug, error, info, warn};
 
-/// Panoptes CLI arguments
+use panoptes::analyzers::{AnalyzerRegistry, AnalysisResult};
+use panoptes::config::AppConfig;
+use panoptes::db::Database;
+use panoptes::history::{History, create_entry};
+use panoptes::ollama::OllamaClient;
+use panoptes::watcher::{FileWatcher, WatchEvent, should_process, wait_for_stable};
+use panoptes::{PanoptesError, Result};
+
+/// Panoptes CLI - Local AI File Scanner & Renamer
 #[derive(Parser, Debug)]
 #[command(name = "panoptes")]
 #[command(author = "Jonathan D. A. Jewell <hyperpolymath>")]
-#[command(version = "1.0.0")]
+#[command(version = "3.0.0")]
 #[command(about = "Local AI-powered file scanner and renamer", long_about = None)]
-struct Args {
+#[command(propagate_version = true)]
+struct Cli {
     /// Path to configuration file (JSON format)
-    #[arg(short, long, default_value = "config.json")]
+    #[arg(short, long, default_value = "config.json", global = true)]
     config: PathBuf,
 
-    /// Directory to watch (overrides config)
-    #[arg(short, long)]
-    watch: Option<PathBuf>,
-
-    /// Ollama API URL (overrides config)
-    #[arg(long)]
-    api_url: Option<String>,
-
-    /// AI model to use (overrides config)
-    #[arg(short, long)]
-    model: Option<String>,
-
-    /// Enable verbose logging
-    #[arg(short, long)]
+    /// Enable verbose logging (debug level)
+    #[arg(short, long, global = true)]
     verbose: bool,
 
-    /// Dry run mode (don't actually rename files)
-    #[arg(long)]
-    dry_run: bool,
+    /// Enable trace logging (most verbose)
+    #[arg(long, global = true)]
+    trace: bool,
 
-    /// Skip Ollama health check on startup
-    #[arg(long)]
-    skip_health_check: bool,
+    /// Output format for results
+    #[arg(long, global = true, default_value = "text", value_parser = ["text", "json", "jsonl"])]
+    format: String,
 
-    /// Path to rename history log (for undo support)
-    #[arg(long, default_value = "panoptes_history.jsonl")]
-    history_file: PathBuf,
+    /// Suppress non-essential output (quiet mode)
+    #[arg(short, long, global = true)]
+    quiet: bool,
+
+    #[command(subcommand)]
+    command: Option<Commands>,
 }
 
-/// Application configuration
-#[derive(Debug, Deserialize, Serialize, Clone)]
-struct AppConfig {
-    watch_path: String,
-    ai_engine: EngineConfig,
-    rules: RuleConfig,
-    prompts: PromptConfig,
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Watch directories for new files and process them
+    Watch {
+        /// Directories to watch (overrides config)
+        #[arg(short, long)]
+        dir: Vec<PathBuf>,
+
+        /// Dry run mode (don't actually rename files)
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip Ollama health check on startup
+        #[arg(long)]
+        skip_health_check: bool,
+
+        /// Process existing files in directories on startup
+        #[arg(long)]
+        process_existing: bool,
+
+        /// Enable recursive directory watching
+        #[arg(short, long)]
+        recursive: bool,
+    },
+
+    /// Analyze a single file or directory
+    Analyze {
+        /// File or directory to analyze
+        path: PathBuf,
+
+        /// Dry run mode (show suggestions without renaming)
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Recursive analysis for directories
+        #[arg(short, long)]
+        recursive: bool,
+
+        /// Minimum confidence threshold (0.0-1.0)
+        #[arg(long, default_value = "0.5")]
+        min_confidence: f64,
+    },
+
+    /// Database operations
+    Db {
+        #[command(subcommand)]
+        action: DbCommands,
+    },
+
+    /// History and undo operations
+    History {
+        #[command(subcommand)]
+        action: HistoryCommands,
+    },
+
+    /// Configuration management
+    Config {
+        #[command(subcommand)]
+        action: ConfigCommands,
+    },
+
+    /// Show AI engine status
+    Status {
+        /// Check specific model availability
+        #[arg(short, long)]
+        model: Option<String>,
+    },
+
+    /// Initialize a new Panoptes project
+    Init {
+        /// Directory to initialize (default: current)
+        #[arg(short, long)]
+        dir: Option<PathBuf>,
+
+        /// Force overwrite existing configuration
+        #[arg(long)]
+        force: bool,
+    },
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
-struct EngineConfig {
-    url: String,
-    model: String,
+#[derive(Subcommand, Debug)]
+enum DbCommands {
+    /// Show database statistics
+    Stats,
+
+    /// List all tags
+    Tags {
+        /// Filter by category
+        #[arg(short, long)]
+        category: Option<String>,
+
+        /// Maximum number to show
+        #[arg(short, long, default_value = "50")]
+        limit: usize,
+    },
+
+    /// List all categories
+    Categories,
+
+    /// Search files in database
+    Search {
+        /// Search query
+        query: String,
+
+        /// Search in tags only
+        #[arg(long)]
+        tags_only: bool,
+
+        /// Maximum results
+        #[arg(short, long, default_value = "20")]
+        limit: usize,
+    },
+
+    /// Export database to JSON
+    Export {
+        /// Output file
+        output: PathBuf,
+    },
+
+    /// Vacuum database (reclaim space)
+    Vacuum,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
-struct RuleConfig {
-    sanitize: bool,
-    date_prefix: bool,
-    max_length: usize,
+#[derive(Subcommand, Debug)]
+enum HistoryCommands {
+    /// List recent history entries
+    List {
+        /// Number of entries to show
+        #[arg(short, long, default_value = "10")]
+        count: usize,
+    },
+
+    /// Undo recent renames
+    Undo {
+        /// Number of renames to undo
+        #[arg(short, long, default_value = "1")]
+        count: usize,
+
+        /// Dry run (show what would be undone)
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Clear all history
+    Clear {
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+    },
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
-struct PromptConfig {
-    image: String,
-    document: String,
-}
+#[derive(Subcommand, Debug)]
+enum ConfigCommands {
+    /// Show current configuration
+    Show,
 
-/// Ollama API request payload
-#[derive(Serialize)]
-struct OllamaRequest {
-    model: String,
-    prompt: String,
-    stream: bool,
-    images: Option<Vec<String>>,
-}
+    /// Generate default configuration file
+    Generate {
+        /// Output file path
+        #[arg(short, long, default_value = "config.json")]
+        output: PathBuf,
 
-/// Ollama API response
-#[derive(Deserialize)]
-struct OllamaResponse {
-    response: String,
-}
+        /// Include all options with defaults
+        #[arg(long)]
+        full: bool,
+    },
 
-/// Rename history entry (for undo support)
-#[derive(Serialize, Deserialize)]
-struct HistoryEntry {
-    timestamp: String,
-    original_path: String,
-    new_path: String,
-    ai_suggestion: String,
-}
+    /// Validate configuration file
+    Validate,
 
-/// Panoptes error types
-#[derive(Error, Debug)]
-enum PanoptesError {
-    #[error("Configuration error: {0}")]
-    Config(String),
-
-    #[error("File system error: {0}")]
-    FileSystem(#[from] std::io::Error),
-
-    #[error("API error: {0}")]
-    Api(#[from] reqwest::Error),
-
-    #[error("Watch error: {0}")]
-    Watch(#[from] notify::Error),
-
-    #[error("Ollama not available: {0}")]
-    OllamaUnavailable(String),
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            watch_path: "./watch".to_string(),
-            ai_engine: EngineConfig {
-                url: "http://localhost:11434/api/generate".to_string(),
-                model: "moondream".to_string(),
-            },
-            rules: RuleConfig {
-                sanitize: true,
-                date_prefix: true,
-                max_length: 50,
-            },
-            prompts: PromptConfig {
-                image: "Analyze this image and generate a concise, descriptive filename \
-                        (max 5 words). Use snake_case. Do not include the file extension. \
-                        Return ONLY the filename."
-                    .to_string(),
-                document: "Summarize the header or title of this document text into a \
-                           concise filename (max 5 words). Use snake_case. Return ONLY \
-                           the filename."
-                    .to_string(),
-            },
-        }
-    }
-}
-
-fn load_config(path: &Path) -> Result<AppConfig, PanoptesError> {
-    if path.exists() {
-        let content = fs::read_to_string(path)?;
-        serde_json::from_str(&content)
-            .map_err(|e| PanoptesError::Config(format!("Failed to parse config: {}", e)))
-    } else {
-        info!("Config file not found at {:?}, using defaults", path);
-        info!("Tip: Run with --config to specify a config file, or create config.json");
-        Ok(AppConfig::default())
-    }
-}
-
-fn apply_cli_overrides(mut config: AppConfig, args: &Args) -> AppConfig {
-    if let Some(ref watch) = args.watch {
-        config.watch_path = watch.to_string_lossy().to_string();
-    }
-    if let Some(ref url) = args.api_url {
-        config.ai_engine.url = url.clone();
-    }
-    if let Some(ref model) = args.model {
-        config.ai_engine.model = model.clone();
-    }
-    config
-}
-
-/// Check if Ollama is running and the model is available
-async fn check_ollama_health(client: &Client, config: &AppConfig) -> Result<(), PanoptesError> {
-    info!("Checking Ollama availability...");
-
-    // Check if Ollama API is reachable
-    let base_url = config
-        .ai_engine
-        .url
-        .replace("/api/generate", "")
-        .replace("/api/chat", "");
-
-    let tags_url = format!("{}/api/tags", base_url);
-
-    let response = client
-        .get(&tags_url)
-        .timeout(Duration::from_secs(10))
-        .send()
-        .await
-        .map_err(|e| {
-            PanoptesError::OllamaUnavailable(format!(
-                "Cannot connect to Ollama at {}: {}. Is Ollama running? Try: just start-engine",
-                base_url, e
-            ))
-        })?;
-
-    if !response.status().is_success() {
-        return Err(PanoptesError::OllamaUnavailable(format!(
-            "Ollama returned status {}: API may be misconfigured",
-            response.status()
-        )));
-    }
-
-    // Check if the model is available
-    #[derive(Deserialize)]
-    struct TagsResponse {
-        models: Vec<ModelInfo>,
-    }
-    #[derive(Deserialize)]
-    struct ModelInfo {
-        name: String,
-    }
-
-    let tags: TagsResponse = response.json().await.map_err(|e| {
-        PanoptesError::OllamaUnavailable(format!("Failed to parse Ollama response: {}", e))
-    })?;
-
-    let model_name = &config.ai_engine.model;
-    let model_available = tags
-        .models
-        .iter()
-        .any(|m| m.name.starts_with(model_name) || m.name == format!("{}:latest", model_name));
-
-    if !model_available {
-        let available: Vec<_> = tags.models.iter().map(|m| m.name.as_str()).collect();
-        return Err(PanoptesError::OllamaUnavailable(format!(
-            "Model '{}' not found. Available models: {:?}. Try: just pull-model",
-            model_name, available
-        )));
-    }
-
-    info!("Ollama is ready with model '{}'", model_name);
-    Ok(())
-}
-
-/// Write a rename operation to the history log
-fn write_history(
-    history_path: &Path,
-    original: &Path,
-    new_path: &Path,
-    suggestion: &str,
-) -> Result<(), PanoptesError> {
-    let entry = HistoryEntry {
-        timestamp: Local::now().to_rfc3339(),
-        original_path: original.to_string_lossy().to_string(),
-        new_path: new_path.to_string_lossy().to_string(),
-        ai_suggestion: suggestion.to_string(),
-    };
-
-    let mut file = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(history_path)?;
-
-    let json = serde_json::to_string(&entry)
-        .map_err(|e| PanoptesError::Config(format!("Failed to serialize history: {}", e)))?;
-
-    writeln!(file, "{}", json)?;
-    debug!("Wrote history entry for {:?}", original);
-    Ok(())
+    /// Edit configuration interactively
+    Edit,
 }
 
 #[tokio::main]
-async fn main() -> Result<(), PanoptesError> {
-    let args = Args::parse();
+async fn main() -> Result<()> {
+    let cli = Cli::parse();
 
     // Initialize tracing
-    let filter = if args.verbose { "debug" } else { "info" };
+    let filter = if cli.trace {
+        "trace"
+    } else if cli.verbose {
+        "debug"
+    } else if cli.quiet {
+        "warn"
+    } else {
+        "info"
+    };
+
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
         .init();
 
-    info!("Panoptes v1.0.0 - Local AI File Scanner");
-    info!("Loading configuration from: {:?}", args.config);
+    if !cli.quiet {
+        info!("Panoptes v3.0.0 - Local AI File Scanner");
+    }
 
-    let config = load_config(&args.config)?;
-    let config = apply_cli_overrides(config, &args);
+    // Load configuration
+    let config = AppConfig::load(&cli.config)?;
 
-    info!("Watching directory: {}", config.watch_path);
-    info!("Using model: {}", config.ai_engine.model);
-    info!("History file: {:?}", args.history_file);
+    match cli.command {
+        Some(Commands::Watch { dir, dry_run, skip_health_check, process_existing, recursive: _ }) => {
+            run_watch(config, dir, dry_run, skip_health_check, process_existing).await
+        }
+        Some(Commands::Analyze { path, dry_run, recursive, min_confidence }) => {
+            run_analyze(config, path, dry_run, recursive, min_confidence, &cli.format).await
+        }
+        Some(Commands::Db { action }) => {
+            run_db_command(config, action).await
+        }
+        Some(Commands::History { action }) => {
+            run_history_command(config, action).await
+        }
+        Some(Commands::Config { action }) => {
+            run_config_command(config, action, &cli.config).await
+        }
+        Some(Commands::Status { model }) => {
+            run_status(config, model).await
+        }
+        Some(Commands::Init { dir, force }) => {
+            run_init(dir, force).await
+        }
+        None => {
+            // Default: run watch mode
+            run_watch(config, vec![], false, false, false).await
+        }
+    }
+}
 
-    if args.dry_run {
+/// Run the watch mode (main scanner loop)
+async fn run_watch(
+    config: AppConfig,
+    dir_overrides: Vec<PathBuf>,
+    dry_run: bool,
+    skip_health_check: bool,
+    process_existing: bool,
+) -> Result<()> {
+    let watch_paths: Vec<PathBuf> = if dir_overrides.is_empty() {
+        config.watch_paths.iter().map(PathBuf::from).collect()
+    } else {
+        dir_overrides
+    };
+
+    info!("Watch directories: {:?}", watch_paths);
+
+    if dry_run {
         warn!("DRY RUN MODE - files will not be renamed");
     }
 
-    // Create HTTP client
-    let client = Client::builder()
-        .timeout(Duration::from_secs(120))
-        .build()?;
+    // Initialize components
+    let client = OllamaClient::new(&config.ai_engine.url);
 
     // Health check
-    if !args.skip_health_check {
-        check_ollama_health(&client, &config).await?;
+    if !skip_health_check {
+        info!("Checking Ollama availability...");
+        match client.health_check().await {
+            Ok(()) => info!("Ollama is running"),
+            Err(e) => {
+                return Err(PanoptesError::OllamaUnavailable(format!(
+                    "Failed to connect to Ollama: {}. Try: just start-engine", e
+                )))
+            }
+        }
+
+        // Check vision model
+        let models = client.list_models().await?;
+        let vision_model = &config.ai_engine.models.vision;
+        if !models.iter().any(|m| m.starts_with(vision_model)) {
+            warn!("Vision model '{}' not found. Available: {:?}", vision_model, models);
+            warn!("Try: just pull-model");
+        } else {
+            info!("Vision model '{}' available", vision_model);
+        }
     } else {
-        warn!("Skipping Ollama health check (--skip-health-check)");
+        warn!("Skipping Ollama health check");
     }
 
-    // Create watch directory if it doesn't exist
-    let watch_path = Path::new(&config.watch_path);
-    if !watch_path.exists() {
-        fs::create_dir_all(watch_path)?;
-        info!("Created watch directory: {:?}", watch_path);
+    // Initialize database
+    let db = Database::open(&config.database.path)?;
+    info!("Database initialized: {}", config.database.path);
+
+    // Initialize history
+    let history_path = PathBuf::from("panoptes_history.jsonl");
+    let history = History::new(history_path.clone());
+
+    // Initialize analyzer registry
+    let registry = AnalyzerRegistry::new(&config);
+    info!("Loaded {} analyzers: {:?}", registry.len(), registry.analyzer_names());
+
+    // Setup file watcher
+    let mut watcher = FileWatcher::new()?;
+    for path in &watch_paths {
+        watcher.watch(path)?;
+    }
+
+    // Process existing files if requested
+    if process_existing {
+        info!("Processing existing files...");
+        for dir in &watch_paths {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() && should_process(&path) {
+                        if let Err(e) = process_file(
+                            path.clone(),
+                            &config,
+                            &registry,
+                            &db,
+                            &history,
+                            dry_run,
+                        ).await {
+                            error!("Failed to process {:?}: {}", path, e);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Setup graceful shutdown
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    // Spawn shutdown signal handler
-    let shutdown_tx_clone = shutdown_tx.clone();
     tokio::spawn(async move {
         let ctrl_c = async {
-            signal::ctrl_c()
-                .await
-                .expect("Failed to install Ctrl+C handler");
+            signal::ctrl_c().await.expect("Failed to install Ctrl+C handler");
         };
 
         #[cfg(unix)]
@@ -343,68 +395,55 @@ async fn main() -> Result<(), PanoptesError> {
         let terminate = std::future::pending::<()>();
 
         tokio::select! {
-            _ = ctrl_c => {
-                info!("Received Ctrl+C, initiating graceful shutdown...");
-            }
-            _ = terminate => {
-                info!("Received SIGTERM, initiating graceful shutdown...");
-            }
+            _ = ctrl_c => info!("Received Ctrl+C, shutting down..."),
+            _ = terminate => info!("Received SIGTERM, shutting down..."),
         }
 
-        let _ = shutdown_tx_clone.send(true);
+        let _ = shutdown_tx.send(true);
     });
 
-    // Setup file watcher
-    let (tx, rx) = channel();
-    let notify_config = Config::default().with_poll_interval(Duration::from_secs(2));
-    let mut watcher: RecommendedWatcher = Watcher::new(tx, notify_config)?;
-
-    watcher.watch(watch_path, RecursiveMode::NonRecursive)?;
-
-    info!("Scanner active. Press Ctrl+C to stop gracefully.");
+    info!("Scanner active. Press Ctrl+C to stop.");
     info!("Waiting for files...");
 
     // Main event loop
     loop {
-        // Check for shutdown
         if *shutdown_rx.borrow() {
-            info!("Shutdown signal received, stopping watcher...");
             break;
         }
 
-        // Non-blocking receive with timeout
-        match rx.recv_timeout(Duration::from_millis(100)) {
-            Ok(Ok(event)) => {
-                if let EventKind::Create(_) = event.kind {
-                    for path in event.paths {
+        if let Some(event) = watcher.next_event(Duration::from_millis(100)) {
+            match event {
+                WatchEvent::FileCreated(path) => {
+                    if should_process(&path) {
                         let config_clone = config.clone();
-                        let client_clone = client.clone();
-                        let dry_run = args.dry_run;
-                        let history_path = args.history_file.clone();
+                        let db_clone = db.clone();
+                        let history_clone = History::new(history_path.clone());
+                        let registry_clone = registry.clone();
 
                         tokio::spawn(async move {
+                            // Wait for file stability
+                            if !wait_for_stable(&path, Duration::from_secs(10)).await {
+                                debug!("File disappeared during stability check: {:?}", path);
+                                return;
+                            }
+
                             if let Err(e) = process_file(
                                 path.clone(),
-                                config_clone,
-                                client_clone,
+                                &config_clone,
+                                &registry_clone,
+                                &db_clone,
+                                &history_clone,
                                 dry_run,
-                                history_path,
-                            )
-                            .await
-                            {
+                            ).await {
                                 error!("Failed to process {:?}: {}", path, e);
                             }
                         });
                     }
                 }
-            }
-            Ok(Err(e)) => warn!("Watch error: {:?}", e),
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                // No events, continue loop (allows shutdown check)
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                error!("File watcher disconnected unexpectedly");
-                break;
+                WatchEvent::Error(e) => {
+                    warn!("Watch error: {}", e);
+                }
+                _ => {}
             }
         }
     }
@@ -413,170 +452,91 @@ async fn main() -> Result<(), PanoptesError> {
     Ok(())
 }
 
+/// Process a single file
 async fn process_file(
     path: PathBuf,
-    config: AppConfig,
-    client: Client,
+    config: &AppConfig,
+    registry: &AnalyzerRegistry,
+    db: &Database,
+    history: &History,
     dry_run: bool,
-    history_path: PathBuf,
-) -> Result<(), PanoptesError> {
-    // Skip hidden files and temp files
-    let filename = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or_default();
-
-    if filename.starts_with('.')
-        || filename.ends_with(".tmp")
-        || filename.ends_with(".part")
-        || filename.ends_with(".crdownload")
-    {
-        debug!("Skipping temporary/hidden file: {:?}", path);
-        return Ok(());
-    }
-
-    // Wait for file write completion (async sleep)
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
-    // Verify file still exists and is readable
-    if !path.exists() {
-        debug!("File no longer exists: {:?}", path);
-        return Ok(());
-    }
-
-    // Check file size stability (simple approach)
-    let initial_size = fs::metadata(&path)?.len();
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    if path.exists() {
-        let current_size = fs::metadata(&path)?.len();
-        if current_size != initial_size {
-            debug!("File still being written: {:?}", path);
-            // Re-queue by returning - the file will trigger another event when done
-            return Ok(());
-        }
-    }
-
+) -> Result<()> {
     info!("Analyzing: {:?}", path);
 
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    let new_name = match extension.as_str() {
-        "jpg" | "jpeg" | "png" | "webp" | "gif" | "bmp" | "tiff" | "tif" => {
-            analyze_image(&path, &config, &client).await?
-        }
-        "pdf" => {
-            warn!("PDF analysis requires rasterization - skipping vision analysis");
-            None
-        }
-        _ => {
-            debug!("Unsupported file type: {}", extension);
-            None
+    // Find appropriate analyzer
+    let analyzer = match registry.find_analyzer(&path) {
+        Some(a) => a,
+        None => {
+            debug!("No analyzer for: {:?}", path);
+            return Ok(());
         }
     };
 
-    if let Some(name) = new_name {
+    info!("Using analyzer: {}", analyzer.name());
+
+    // Run analysis
+    let result = analyzer.analyze(&path, config).await?;
+
+    info!("Suggestion: {} (confidence: {:.0}%)", result.suggested_name, result.confidence * 100.0);
+
+    if let Some(ref cat) = result.category {
+        info!("Category: {}", cat);
+    }
+    if !result.tags.is_empty() {
+        info!("Tags: {:?}", result.tags);
+    }
+
+    // Store in database
+    let file_id = uuid::Uuid::new_v4().to_string();
+    if let Err(e) = db.insert_file(
+        &file_id,
+        path.to_str().unwrap_or(""),
+        &result.suggested_name,
+        &result.file_hash,
+        result.category.as_deref(),
+        result.confidence,
+        &result.metadata,
+    ) {
+        warn!("Failed to store in database: {}", e);
+    }
+
+    // Add tags
+    for tag in &result.tags {
+        if let Err(e) = db.add_tag(&file_id, tag, result.category.as_deref()) {
+            debug!("Failed to add tag '{}': {}", tag, e);
+        }
+    }
+
+    // Rename file
+    if result.confidence >= 0.5 {
         if dry_run {
-            info!("DRY RUN: Would rename {:?} to {}.{}", path, name, extension);
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            info!("DRY RUN: Would rename {:?} to {}.{}", path, result.suggested_name, ext);
         } else {
-            rename_file(&path, &name, &config, &history_path)?;
+            rename_file(&path, &result, config, history)?;
         }
     } else {
-        debug!("No rename suggestion for: {:?}", path);
+        info!("Confidence too low ({:.0}%), skipping rename", result.confidence * 100.0);
     }
 
     Ok(())
 }
 
-async fn analyze_image(
-    path: &PathBuf,
-    config: &AppConfig,
-    client: &Client,
-) -> Result<Option<String>, PanoptesError> {
-    let image_data = fs::read(path)?;
-    let encoded = general_purpose::STANDARD.encode(&image_data);
-
-    let payload = OllamaRequest {
-        model: config.ai_engine.model.clone(),
-        prompt: config.prompts.image.clone(),
-        stream: false,
-        images: Some(vec![encoded]),
-    };
-
-    debug!("Sending request to Ollama API");
-
-    let response = client
-        .post(&config.ai_engine.url)
-        .json(&payload)
-        .send()
-        .await?;
-
-    if !response.status().is_success() {
-        warn!("API returned error status: {}", response.status());
-        return Ok(None);
-    }
-
-    let json: OllamaResponse = response.json().await?;
-    let cleaned = clean_filename(&json.response);
-
-    if cleaned.is_empty() {
-        warn!("AI returned empty filename suggestion");
-        return Ok(None);
-    }
-
-    info!("AI suggested filename: {}", cleaned);
-    Ok(Some(cleaned))
-}
-
-fn clean_filename(raw: &str) -> String {
-    let mut clean = raw.trim().replace(['\n', '\r'], "");
-
-    // Remove common chat prefixes
-    if let Some(idx) = clean.find(':') {
-        if idx < 20 {
-            clean = clean[idx + 1..].trim().to_string();
-        }
-    }
-
-    // Remove quotes
-    clean = clean.trim_matches('"').trim_matches('\'').to_string();
-
-    // Sanitize: keep only alphanumeric, underscore, hyphen
-    clean = clean
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
-        .collect::<String>();
-
-    // Convert spaces to underscores and lowercase
-    clean = clean.replace(' ', "_").to_lowercase();
-
-    // Remove consecutive underscores
-    while clean.contains("__") {
-        clean = clean.replace("__", "_");
-    }
-
-    clean.trim_matches('_').to_string()
-}
-
+/// Rename a file with the analysis result
 fn rename_file(
-    original: &PathBuf,
-    new_name: &str,
+    original: &Path,
+    result: &AnalysisResult,
     config: &AppConfig,
-    history_path: &Path,
-) -> Result<(), PanoptesError> {
-    let parent = original
-        .parent()
+    history: &History,
+) -> Result<()> {
+    let parent = original.parent()
         .ok_or_else(|| PanoptesError::Config("Cannot determine parent directory".to_string()))?;
 
-    let ext = original
-        .extension()
+    let ext = original.extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
 
-    let mut final_name = new_name.to_string();
+    let mut final_name = result.suggested_name.clone();
 
     if config.rules.date_prefix {
         let date = Local::now().format("%Y-%m-%d").to_string();
@@ -586,7 +546,6 @@ fn rename_file(
     // Truncate to max length
     if final_name.len() > config.rules.max_length {
         final_name.truncate(config.rules.max_length);
-        // Clean up trailing underscore from truncation
         final_name = final_name.trim_end_matches('_').to_string();
     }
 
@@ -600,11 +559,360 @@ fn rename_file(
         new_path
     };
 
-    // Write to history BEFORE renaming (so we can undo even if something goes wrong)
-    write_history(history_path, original, &new_path, new_name)?;
+    // Write history entry
+    let entry = create_entry(
+        uuid::Uuid::new_v4().to_string(),
+        original.to_path_buf(),
+        new_path.clone(),
+        result.suggested_name.clone(),
+        result.category.clone(),
+        result.tags.clone(),
+        result.file_hash.clone(),
+    );
+    history.append(&entry)?;
 
-    fs::rename(original, &new_path)?;
+    // Perform rename
+    std::fs::rename(original, &new_path)?;
     info!("Renamed to: {:?}", new_path);
+
+    Ok(())
+}
+
+/// Run single file/directory analysis
+async fn run_analyze(
+    config: AppConfig,
+    path: PathBuf,
+    dry_run: bool,
+    recursive: bool,
+    min_confidence: f64,
+    format: &str,
+) -> Result<()> {
+    let registry = AnalyzerRegistry::new(&config);
+    let history = History::new(PathBuf::from("panoptes_history.jsonl"));
+
+    let files: Vec<PathBuf> = if path.is_dir() {
+        if recursive {
+            walkdir(&path)
+        } else {
+            std::fs::read_dir(&path)?
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.is_file())
+                .collect()
+        }
+    } else {
+        vec![path]
+    };
+
+    let mut results = Vec::new();
+
+    for file in files {
+        if !should_process(&file) {
+            continue;
+        }
+
+        if let Some(analyzer) = registry.find_analyzer(&file) {
+            match analyzer.analyze(&file, &config).await {
+                Ok(result) => {
+                    if result.confidence >= min_confidence {
+                        if format == "text" {
+                            println!("{}: {} ({:.0}%)",
+                                file.display(),
+                                result.suggested_name,
+                                result.confidence * 100.0
+                            );
+                        }
+
+                        if !dry_run && result.confidence >= 0.5 {
+                            rename_file(&file, &result, &config, &history)?;
+                        }
+
+                        results.push((file, result));
+                    }
+                }
+                Err(e) => {
+                    if format == "text" {
+                        eprintln!("Error analyzing {}: {}", file.display(), e);
+                    }
+                }
+            }
+        }
+    }
+
+    // Output results in requested format
+    match format {
+        "json" => {
+            let output: Vec<serde_json::Value> = results.iter().map(|(p, r)| {
+                serde_json::json!({
+                    "path": p.to_string_lossy(),
+                    "suggested_name": r.suggested_name,
+                    "confidence": r.confidence,
+                    "category": r.category,
+                    "tags": r.tags,
+                })
+            }).collect();
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
+        "jsonl" => {
+            for (p, r) in &results {
+                let line = serde_json::json!({
+                    "path": p.to_string_lossy(),
+                    "suggested_name": r.suggested_name,
+                    "confidence": r.confidence,
+                    "category": r.category,
+                    "tags": r.tags,
+                });
+                println!("{}", serde_json::to_string(&line)?);
+            }
+        }
+        _ => {}
+    }
+
+    if !results.is_empty() && format == "text" {
+        println!("\nAnalyzed {} files", results.len());
+    }
+
+    Ok(())
+}
+
+/// Walk directory recursively
+fn walkdir(path: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                files.extend(walkdir(&p));
+            } else if p.is_file() {
+                files.push(p);
+            }
+        }
+    }
+
+    files
+}
+
+/// Run database commands
+async fn run_db_command(config: AppConfig, action: DbCommands) -> Result<()> {
+    let db = Database::open(&config.database.path)?;
+
+    match action {
+        DbCommands::Stats => {
+            let stats = db.get_stats()?;
+            println!("Database Statistics:");
+            println!("  Files: {}", stats.file_count);
+            println!("  Tags: {}", stats.tag_count);
+            println!("  Categories: {}", stats.category_count);
+        }
+        DbCommands::Tags { category, limit } => {
+            let tags = db.get_all_tags()?;
+            println!("Tags:");
+            for (i, tag) in tags.iter().enumerate() {
+                if i >= limit { break; }
+                if let Some(ref cat) = category {
+                    if tag.category.as_ref() == Some(cat) {
+                        println!("  {} ({})", tag.name, tag.category.as_deref().unwrap_or("-"));
+                    }
+                } else {
+                    println!("  {} ({})", tag.name, tag.category.as_deref().unwrap_or("-"));
+                }
+            }
+        }
+        DbCommands::Categories => {
+            let categories = db.get_all_categories()?;
+            println!("Categories:");
+            for cat in categories {
+                println!("  {} - {} ({} files)", cat.name, cat.description.unwrap_or_default(), cat.file_count);
+            }
+        }
+        DbCommands::Search { query, tags_only: _, limit } => {
+            let results = db.search_files(&query, limit)?;
+            println!("Search results for '{}':", query);
+            for file in results {
+                println!("  {}: {}", file.id, file.suggested_name);
+            }
+        }
+        DbCommands::Export { output } => {
+            let files = db.get_all_files()?;
+            let json = serde_json::to_string_pretty(&files)?;
+            std::fs::write(&output, json)?;
+            println!("Exported {} files to {:?}", files.len(), output);
+        }
+        DbCommands::Vacuum => {
+            db.vacuum()?;
+            println!("Database vacuumed successfully");
+        }
+    }
+
+    Ok(())
+}
+
+/// Run history commands
+async fn run_history_command(config: AppConfig, action: HistoryCommands) -> Result<()> {
+    let history = History::new(PathBuf::from("panoptes_history.jsonl"));
+
+    match action {
+        HistoryCommands::List { count } => {
+            let entries = history.get_recent(count)?;
+            println!("Recent history ({} entries):", entries.len());
+            for entry in entries {
+                let status = if entry.undone { "[UNDONE]" } else { "" };
+                println!("  {} {} -> {} {}",
+                    entry.timestamp.format("%Y-%m-%d %H:%M"),
+                    entry.original_path.display(),
+                    entry.new_path.display(),
+                    status
+                );
+            }
+        }
+        HistoryCommands::Undo { count, dry_run } => {
+            let entries = history.get_undoable()?;
+            let to_undo: Vec<_> = entries.into_iter().rev().take(count).collect();
+
+            if to_undo.is_empty() {
+                println!("No renames to undo");
+                return Ok(());
+            }
+
+            for entry in to_undo {
+                if entry.new_path.exists() {
+                    if dry_run {
+                        println!("Would undo: {} -> {}",
+                            entry.new_path.display(),
+                            entry.original_path.display()
+                        );
+                    } else {
+                        std::fs::rename(&entry.new_path, &entry.original_path)?;
+                        history.mark_undone(&entry.id)?;
+                        println!("Undone: {} -> {}",
+                            entry.new_path.display(),
+                            entry.original_path.display()
+                        );
+                    }
+                } else {
+                    warn!("File not found (may have been moved/deleted): {:?}", entry.new_path);
+                }
+            }
+        }
+        HistoryCommands::Clear { force } => {
+            if !force {
+                eprintln!("Use --force to confirm clearing history");
+                return Ok(());
+            }
+            history.clear()?;
+            println!("History cleared");
+        }
+    }
+
+    Ok(())
+}
+
+/// Run config commands
+async fn run_config_command(config: AppConfig, action: ConfigCommands, config_path: &Path) -> Result<()> {
+    match action {
+        ConfigCommands::Show => {
+            let json = serde_json::to_string_pretty(&config)?;
+            println!("{}", json);
+        }
+        ConfigCommands::Generate { output, full: _ } => {
+            let default_config = AppConfig::default();
+            default_config.save(&output)?;
+            println!("Generated config at {:?}", output);
+        }
+        ConfigCommands::Validate => {
+            println!("Configuration at {:?} is valid", config_path);
+            println!("  Watch paths: {:?}", config.watch_paths);
+            println!("  Vision model: {}", config.ai_engine.models.vision);
+            println!("  Database: {}", config.database.path);
+        }
+        ConfigCommands::Edit => {
+            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
+            std::process::Command::new(editor)
+                .arg(config_path)
+                .status()?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Run status check
+async fn run_status(config: AppConfig, model: Option<String>) -> Result<()> {
+    let client = OllamaClient::new(&config.ai_engine.url);
+
+    println!("Panoptes v3.0.0 Status");
+    println!("======================");
+
+    // Check Ollama
+    match client.health_check().await {
+        Ok(()) => println!("Ollama: Running"),
+        Err(e) => println!("Ollama: Error - {}", e),
+    }
+
+    // List models
+    match client.list_models().await {
+        Ok(models) => {
+            println!("\nAvailable models:");
+            for m in &models {
+                let marker = if Some(m.clone()) == model || m.starts_with(config.ai_engine.models.vision.as_str()) {
+                    "→"
+                } else {
+                    " "
+                };
+                println!("  {} {}", marker, m);
+            }
+        }
+        Err(e) => println!("  Error listing models: {}", e),
+    }
+
+    // Check database
+    match Database::open(&config.database.path) {
+        Ok(db) => {
+            let stats = db.get_stats()?;
+            println!("\nDatabase ({}):", config.database.path);
+            println!("  Files: {}", stats.file_count);
+            println!("  Tags: {}", stats.tag_count);
+        }
+        Err(e) => println!("\nDatabase: ✗ Error - {}", e),
+    }
+
+    println!("\nConfiguration:");
+    println!("  Watch paths: {:?}", config.watch_paths);
+    println!("  Vision model: {}", config.ai_engine.models.vision);
+    println!("  Text model: {}", config.ai_engine.models.text);
+    println!("  Code model: {}", config.ai_engine.models.code);
+
+    Ok(())
+}
+
+/// Initialize a new Panoptes project
+async fn run_init(dir: Option<PathBuf>, force: bool) -> Result<()> {
+    let target = dir.unwrap_or_else(|| PathBuf::from("."));
+    let config_path = target.join("config.json");
+
+    if config_path.exists() && !force {
+        return Err(PanoptesError::Config(
+            "config.json already exists. Use --force to overwrite".to_string()
+        ));
+    }
+
+    // Create directories
+    let watch_dir = target.join("watch");
+    std::fs::create_dir_all(&watch_dir)?;
+
+    // Create default config
+    let mut config = AppConfig::default();
+    config.watch_paths = vec![watch_dir.to_string_lossy().to_string()];
+    config.save(&config_path)?;
+
+    println!("Panoptes initialized in {:?}", target);
+    println!("\nCreated:");
+    println!("  - config.json");
+    println!("  - watch/");
+    println!("\nNext steps:");
+    println!("  1. Start Ollama: just start-engine");
+    println!("  2. Start scanner: panoptes watch");
 
     Ok(())
 }
@@ -614,56 +922,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_clean_filename_basic() {
-        assert_eq!(clean_filename("hello world"), "hello_world");
-        assert_eq!(clean_filename("  spaced  "), "spaced");
+    fn test_cli_parsing() {
+        let cli = Cli::try_parse_from(["panoptes"]).unwrap();
+        assert!(!cli.verbose);
     }
 
     #[test]
-    fn test_clean_filename_with_prefix() {
-        assert_eq!(
-            clean_filename("Here is your filename: sunset_beach"),
-            "sunset_beach"
-        );
+    fn test_cli_watch_command() {
+        let cli = Cli::try_parse_from([
+            "panoptes", "watch", "--dry-run", "--dir", "/tmp/test"
+        ]).unwrap();
+
+        match cli.command {
+            Some(Commands::Watch { dry_run, dir, .. }) => {
+                assert!(dry_run);
+                assert_eq!(dir, vec![PathBuf::from("/tmp/test")]);
+            }
+            _ => panic!("Expected Watch command"),
+        }
     }
 
     #[test]
-    fn test_clean_filename_special_chars() {
-        assert_eq!(
-            clean_filename("file@name#with$special!chars"),
-            "filenamewithspecialchars"
-        );
-    }
+    fn test_cli_analyze_command() {
+        let cli = Cli::try_parse_from([
+            "panoptes", "analyze", "/tmp/file.jpg", "--dry-run"
+        ]).unwrap();
 
-    #[test]
-    fn test_clean_filename_quotes() {
-        assert_eq!(clean_filename("\"quoted_name\""), "quoted_name");
-        assert_eq!(clean_filename("'single_quoted'"), "single_quoted");
-    }
-
-    #[test]
-    fn test_clean_filename_newlines() {
-        assert_eq!(clean_filename("name\nwith\nnewlines"), "namewithnewlines");
-    }
-
-    #[test]
-    fn test_clean_filename_consecutive_underscores() {
-        assert_eq!(clean_filename("too___many___underscores"), "too_many_underscores");
-    }
-
-    #[test]
-    fn test_default_config() {
-        let config = AppConfig::default();
-        assert_eq!(config.ai_engine.model, "moondream");
-        assert!(config.rules.date_prefix);
-        assert_eq!(config.rules.max_length, 50);
-    }
-
-    #[test]
-    fn test_config_serialization() {
-        let config = AppConfig::default();
-        let json = serde_json::to_string_pretty(&config).unwrap();
-        let parsed: AppConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.ai_engine.model, config.ai_engine.model);
+        match cli.command {
+            Some(Commands::Analyze { path, dry_run, .. }) => {
+                assert!(dry_run);
+                assert_eq!(path, PathBuf::from("/tmp/file.jpg"));
+            }
+            _ => panic!("Expected Analyze command"),
+        }
     }
 }

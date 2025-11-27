@@ -3,10 +3,10 @@
 
 [package]
 name = "panoptes"
-version = "1.0.0"
+version = "3.0.0"
 edition = "2021"
 authors = ["Jonathan D. A. Jewell <hyperpolymath>"]
-description = "Local AI-powered file scanner and renamer using Moondream vision model"
+description = "Local AI-powered file scanner and renamer with web UI"
 license = "MIT"
 repository = "https://gitlab.com/hyperpolymath/panoptes"
 readme = "README.adoc"
@@ -15,17 +15,85 @@ categories = ["command-line-utilities", "filesystem"]
 rust-version = "1.75"
 
 [dependencies]
-notify = "6.1"
-reqwest = { version = "0.12", features = ["json"] }
+# Async runtime
 tokio = { version = "1.40", features = ["full"] }
+async-trait = "0.1"
+
+# File watching
+notify = "6.1"
+
+# HTTP client & server
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+axum = { version = "0.7", features = ["ws", "multipart"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-chrono = "0.4"
-base64 = "0.22"
-thiserror = "1.0"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-clap = { version = "4.5", features = ["derive"] }
+
+# Date/Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Encoding
+base64 = "0.22"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Database (SQLite for tags/categories)
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Image processing
+image = "0.25"
+
+# PDF processing
+pdf-extract = "0.7"
+lopdf = "0.32"
+
+# Audio metadata
+id3 = "1.13"
+mp3-metadata = "0.3"
+symphonia = { version = "0.5", features = ["all"] }
+
+# Archive inspection
+zip = "2.1"
+tar = "0.4"
+flate2 = "1.0"
+
+# Code analysis
+tree-sitter = "0.22"
+tree-sitter-rust = "0.21"
+tree-sitter-python = "0.21"
+tree-sitter-javascript = "0.21"
+
+# Document parsing
+quick-xml = "0.31"
+calamine = "0.24"
+
+# Hashing for deduplication
+blake3 = "1.5"
+
+# UUID for unique IDs
+uuid = { version = "1.8", features = ["v4", "serde"] }
+
+# Glob patterns
+glob = "0.3"
+
+# Template engine for web UI
+minijinja = "2.0"
+
+# WebSocket for real-time updates
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
 
 [dev-dependencies]
 tempfile = "3.12"
@@ -44,3 +112,7 @@ path = "src/main.rs"
 [[bin]]
 name = "panoptes-undo"
 path = "src/bin/panoptes-undo.rs"
+
+[[bin]]
+name = "panoptes-web"
+path = "src/bin/panoptes-web.rs"
