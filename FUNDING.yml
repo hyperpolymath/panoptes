@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+
+# Panoptes Funding Information
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+
+# Platform-specific funding links
+github: []
+patreon: hyperpolymath
+open_collective: panoptes
+ko_fi: hyperpolymath
+tidelift: ""
+community_bridge: ""
+liberapay: hyperpolymath
+issuehunt: ""
+otechie: ""
+lfx_crowdfunding: ""
+
+# Custom funding links
+custom:
+  - "https://panoptes.example.com/sponsor"
+
+# Funding philosophy (RSR compliance - transparency)
+#
+# This project follows solidarity economics principles:
+# - All funding is transparently reported
+# - Contributors are fairly compensated when possible
+# - Funds are used for:
+#   1. Infrastructure costs (CI/CD, hosting)
+#   2. Security audits
+#   3. Contributor bounties
+#   4. Documentation improvements
+#
+# Annual transparency reports are published in the repository.

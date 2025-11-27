@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+#
+# humans.txt - The people behind Panoptes
+# https://humanstxt.org/
+
+/* TEAM */
+Project Lead: Jonathan D. A. Jewell
+Contact: hyperpolymath [at] example.com
+GitLab: @hyperpolymath
+Location: Earth
+Role: Creator, Maintainer
+
+/* THANKS */
+Name: The Moondream Team
+Role: Tiny Vision Language Model
+URL: https://moondream.ai/
+
+Name: Ollama Project
+Role: Local LLM Runtime
+URL: https://ollama.ai/
+
+Name: The Rust Community
+Role: Programming Language & Ecosystem
+URL: https://www.rust-lang.org/
+
+Name: Chainguard
+Role: Secure Container Base Images
+URL: https://www.chainguard.dev/
+
+Name: Nix Community
+Role: Reproducible Builds
+URL: https://nixos.org/
+
+/* SITE */
+Last update: 2025-11-27
+Language: English
+Standards: RSR Gold, SPDX, RFC 9116
+Doctype: AsciiDoc, Markdown
+IDE: Neovim, VS Code
+Build: Nix, Cargo, Just
+Container: Podman
+License: MIT

@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+
+# === Rust ===
+/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# === Nix ===
+/result
+/result-*
+.direnv/
+.envrc.local
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.*.sw?
+
+# === OS ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# === Logs ===
+*.log
+logs/
+panoptes.log
+
+# === Runtime ===
+*.pid
+*.pid.lock
+
+# === Build Artifacts ===
+*.o
+*.a
+*.so
+*.dylib
+
+# === Test Coverage ===
+tarpaulin-report.html
+coverage/
+*.profraw
+*.profdata
+
+# === Generated Files ===
+sbom.json
+
+# === Secrets (should never exist, but prevent accidents) ===
+.env
+.env.*
+*.pem
+*.key
+secrets/
+credentials/
+
+# === Container ===
+.container-*
+
+# === Temporary ===
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup

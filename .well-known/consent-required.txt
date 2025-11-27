@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+#
+# consent-required.txt - HTTP 430 Protocol
+# Defines consent requirements for automated access
+
+# This file indicates consent requirements for accessing
+# various resources in this repository.
+
+# General Policy
+# Most resources are freely accessible under MIT license.
+# No consent required for reading public repository content.
+
+# API Access
+# If this project exposes APIs in the future, consent
+# requirements will be documented here.
+
+# Data Processing
+# This project processes files locally only.
+# No user data is collected or transmitted.
+
+# Consent Categories
+Category: repository-access
+Required: false
+Description: Public repository content is freely accessible
+
+Category: api-access
+Required: false
+Description: Local API (Ollama) requires no external consent
+
+Category: data-processing
+Required: false
+Description: All processing is local; no external data transmission
+
+# Contact
+Contact: mailto:privacy@panoptes.example.com

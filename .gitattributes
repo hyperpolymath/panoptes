@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+
+# === Default Behavior ===
+* text=auto
+
+# === Source Code ===
+*.rs text eol=lf diff=rust
+*.ncl text eol=lf
+*.nix text eol=lf
+
+# === Documentation ===
+*.adoc text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+
+# === Configuration ===
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+
+# === Scripts ===
+*.sh text eol=lf
+*.oil text eol=lf
+*.bash text eol=lf
+Justfile text eol=lf
+
+# === Container ===
+Containerfile text eol=lf
+Dockerfile text eol=lf
+
+# === Git ===
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# === Binary Files ===
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+
+# === Lockfiles ===
+Cargo.lock text eol=lf -diff
+flake.lock text eol=lf -diff
+
+# === Generated (do not diff) ===
+sbom.json -diff
+
+# === Linguist Overrides ===
+*.ncl linguist-language=Nickel
+*.oil linguist-language=Shell
+Justfile linguist-language=Makefile
+
+# === Export Ignore (for archives) ===
+.git* export-ignore
+.direnv export-ignore
+.envrc* export-ignore
+/target export-ignore
+/result* export-ignore

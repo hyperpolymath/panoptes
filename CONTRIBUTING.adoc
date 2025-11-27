@@ -1,0 +1,230 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+
+= Contributing to Panoptes
+:toc: left
+:icons: font
+:source-highlighter: rouge
+
+Thank you for your interest in contributing to Panoptes! This document outlines our contribution process following the Tri-Perimeter Contribution Framework (TPCF).
+
+== Quick Start
+
+[source,bash]
+----
+# Fork and clone
+git clone https://gitlab.com/YOUR_USERNAME/panoptes.git
+cd panoptes
+
+# Set up development environment
+nix develop  # or: just dev
+
+# Create a branch
+git checkout -b feature/your-feature-name
+
+# Make changes, then run checks
+just check
+
+# Commit and push
+git commit -m "feat: description of your change"
+git push origin feature/your-feature-name
+----
+
+== Tri-Perimeter Contribution Framework (TPCF)
+
+=== Perimeter 1 (Core)
+
+Maintainers-only access for:
+
+* Direct pushes to `main` branch
+* Release management
+* CI/CD configuration
+* Security-critical code
+
+=== Perimeter 2 (Expert)
+
+Trusted contributors with fast-track review for:
+
+* Feature implementations
+* Performance improvements
+* Architecture changes
+
+=== Perimeter 3 (Community)
+
+Open to all contributors:
+
+* Bug fixes
+* Documentation
+* Tests
+* Issues and discussions
+
+== Types of Contributions
+
+=== Bug Reports
+
+. Search existing issues first
+. Create a new issue with:
+  * Clear title
+  * Steps to reproduce
+  * Expected vs actual behavior
+  * System information
+  * Logs (if applicable)
+
+=== Feature Requests
+
+. Check ROADMAP.md for planned features
+. Open an issue with:
+  * Use case description
+  * Proposed solution
+  * Alternatives considered
+
+=== Code Contributions
+
+==== Before You Start
+
+. Check for existing issues/MRs
+. For large changes, open an issue first
+. Ensure you understand RSR compliance requirements
+
+==== Code Standards
+
+[source,rust]
+----
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2025 Your Name <email>
+
+// All Rust files must have SPDX headers
+----
+
+* Follow Rust idioms (use `clippy`)
+* Write tests for new functionality
+* Update documentation as needed
+* No `unsafe` code without justification
+
+==== Commit Messages
+
+We follow Conventional Commits:
+
+[source]
+----
+type(scope): description
+
+[optional body]
+
+[optional footer]
+----
+
+Types:
+
+* `feat`: New feature
+* `fix`: Bug fix
+* `docs`: Documentation only
+* `style`: Formatting, no code change
+* `refactor`: Code restructuring
+* `test`: Adding tests
+* `chore`: Maintenance tasks
+
+Examples:
+
+[source]
+----
+feat(scanner): add PDF text extraction support
+
+fix(api): handle Ollama timeout gracefully
+
+docs(readme): add troubleshooting section
+----
+
+==== Pull Request Process
+
+. Create a merge request from your fork
+. Fill out the MR template
+. Ensure CI passes:
+  * `just fmt-check`
+  * `just lint`
+  * `just test`
+  * `just audit`
+. Request review from maintainers
+. Address feedback
+. Squash commits if requested
+
+=== Documentation
+
+Documentation contributions are highly valued:
+
+* README improvements
+* Code comments
+* AsciiDoc documentation
+* Example configurations
+
+== Development Setup
+
+=== Using Nix (Recommended)
+
+[source,bash]
+----
+nix develop
+----
+
+=== Manual Setup
+
+Required tools:
+
+* Rust 1.75+
+* Podman
+* Just
+* Nickel (optional)
+
+[source,bash]
+----
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Install Just
+cargo install just
+
+# Setup project
+just setup
+----
+
+== Running Tests
+
+[source,bash]
+----
+# All tests
+just test
+
+# With coverage
+just test-coverage
+
+# Specific test
+cargo test test_name
+----
+
+== Code Review Guidelines
+
+Reviewers will check:
+
+* [ ] SPDX headers present
+* [ ] Tests pass
+* [ ] No clippy warnings
+* [ ] Documentation updated
+* [ ] Commit messages follow convention
+* [ ] No security regressions
+* [ ] RSR compliance maintained
+
+== Getting Help
+
+* *Questions*: Open a discussion issue
+* *Bugs*: Open a bug report issue
+* *Security*: See link:SECURITY.md[SECURITY.md]
+
+== Recognition
+
+Contributors are recognized in:
+
+* CHANGELOG.md entries
+* Release notes
+* .well-known/humans.txt
+
+Thank you for contributing to Panoptes!

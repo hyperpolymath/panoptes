@@ -1,0 +1,153 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+
+= Panoptes Governance
+:toc: left
+:icons: font
+
+== Overview
+
+This document describes the governance model for the Panoptes project. We follow a Benevolent Dictator for Life (BDFL) model with community input through the Tri-Perimeter Contribution Framework (TPCF).
+
+== Decision Making
+
+=== BDFL Model
+
+Jonathan D. A. Jewell serves as the project BDFL with final authority on:
+
+* Technical direction
+* Release decisions
+* Conflict resolution
+* Maintainer appointments
+
+=== Consensus Seeking
+
+For day-to-day decisions, we seek consensus among active contributors:
+
+1. Proposals are made via GitLab Issues or Merge Requests
+2. Discussion period of at least 72 hours for non-trivial changes
+3. If consensus cannot be reached, BDFL makes final decision
+
+== Roles and Responsibilities
+
+=== Maintainers (Perimeter 1 - Core)
+
+Maintainers have:
+
+* Write access to the repository
+* Authority to merge pull requests
+* Responsibility for release management
+* Duty to uphold code quality standards
+
+Current maintainers are listed in link:MAINTAINERS.md[MAINTAINERS.md].
+
+=== Trusted Contributors (Perimeter 2 - Expert)
+
+Trusted contributors have demonstrated:
+
+* Understanding of project goals and standards
+* Consistent quality contributions
+* Adherence to code of conduct
+
+Trusted contributors may:
+
+* Have merge requests fast-tracked
+* Be consulted on technical decisions
+* Be invited to become maintainers
+
+=== Community Contributors (Perimeter 3 - Community)
+
+All community members may:
+
+* Submit issues and merge requests
+* Participate in discussions
+* Contribute documentation
+
+== Contribution Pathways
+
+[source]
+----
+Community (P3) --> Trusted (P2) --> Maintainer (P1)
+                        |                  |
+                   Contribution        Appointment
+                    Quality            by BDFL
+----
+
+=== Becoming a Trusted Contributor
+
+* 3+ merged contributions
+* Active participation for 3+ months
+* Positive interactions with community
+* Nomination by existing maintainer
+
+=== Becoming a Maintainer
+
+* 6+ months as trusted contributor
+* Demonstrated technical leadership
+* Nomination and approval by BDFL
+
+== Project Decisions
+
+=== Major Decisions
+
+Major decisions affecting project direction require:
+
+* GitLab Issue for discussion
+* Minimum 7-day comment period
+* Input from all maintainers
+* BDFL approval
+
+Examples:
+
+* Breaking API changes
+* New major features
+* Dependency changes
+* License modifications
+
+=== Minor Decisions
+
+Minor decisions can be made by any maintainer:
+
+* Bug fixes
+* Documentation updates
+* Dependency version bumps
+* Code style improvements
+
+== Conflict Resolution
+
+1. *Discussion*: Parties discuss via issue/MR
+2. *Mediation*: Third maintainer facilitates resolution
+3. *Escalation*: BDFL makes final decision
+
+== Code of Conduct Enforcement
+
+See link:CODE_OF_CONDUCT.adoc[CODE_OF_CONDUCT.adoc] for standards.
+
+Enforcement process:
+
+1. Report received
+2. Maintainers review (excluding involved parties)
+3. Decision made within 7 days
+4. Action taken (warning, temporary ban, permanent ban)
+5. Appeal possible to BDFL
+
+== Financial Transparency
+
+* All funding sources listed in link:FUNDING.yml[FUNDING.yml]
+* Spending decisions made by BDFL with community input
+* Annual transparency report published
+
+== Amendments
+
+This governance document may be amended by:
+
+1. Proposing changes via merge request
+2. 14-day discussion period
+3. Maintainer consensus
+4. BDFL approval
+
+== Contact
+
+* Project issues: GitLab Issues
+* Private matters: Direct message to maintainers
+* Security issues: See link:SECURITY.md[SECURITY.md]

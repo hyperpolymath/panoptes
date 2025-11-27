@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+
+[package]
+name = "panoptes"
+version = "1.0.0"
+edition = "2021"
+authors = ["Jonathan D. A. Jewell <hyperpolymath>"]
+description = "Local AI-powered file scanner and renamer using Moondream vision model"
+license = "MIT"
+repository = "https://gitlab.com/hyperpolymath/panoptes"
+readme = "README.adoc"
+keywords = ["ai", "vision", "file-scanner", "ollama", "moondream"]
+categories = ["command-line-utilities", "filesystem"]
+rust-version = "1.75"
+
+[dependencies]
+notify = "6.1"
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1.40", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = "0.4"
+base64 = "0.22"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3.12"
+tokio-test = "0.4"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[[bin]]
+name = "panoptes"
+path = "src/main.rs"

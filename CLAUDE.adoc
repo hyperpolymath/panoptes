@@ -1,0 +1,339 @@
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+
+= CLAUDE.adoc - AI Assistant Integration Guide
+:toc: left
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+== Overview
+
+This document provides context for AI assistants (Claude, GPT, etc.) working with the Panoptes codebase. It follows the RSR (Rhodium Standard Repository) specification for AI-readable project documentation.
+
+== Project Summary
+
+[cols="1,3"]
+|===
+|Project |Panoptes
+
+|Purpose
+|Local AI-powered file scanner and renamer using vision models
+
+|Language
+|Rust (primary), Nickel (config), Nix (reproducibility)
+
+|License
+|MIT (SPDX: MIT)
+
+|Compliance
+|RSR Gold
+
+|Repository
+|https://gitlab.com/hyperpolymath/panoptes
+|===
+
+== Quick Context
+
+[source]
+----
+Panoptes = File Watcher (Rust/notify) + Local AI (Ollama/Moondream) + Renamer
+
+Input:  New files in watched directory
+Output: Renamed files based on AI-generated descriptions
+----
+
+== Architecture
+
+=== Component Diagram
+
+[source]
+----
+┌─────────────────────────────────────────────────────────────┐
+│                     User's File System                       │
+│  ┌─────────────┐                          ┌─────────────┐   │
+│  │ Incoming    │                          │ Renamed     │   │
+│  │ Files       │ ──────────────────────── │ Files       │   │
+│  └─────────────┘                          └─────────────┘   │
+└────────────┬────────────────────────────────────┬───────────┘
+             │                                    │
+             ▼                                    │
+┌─────────────────────────────────────────────────┴───────────┐
+│                      Panoptes (Rust)                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   notify    │──│  Processor  │──│  Renamer            │  │
+│  │  (inotify)  │  │  (async)    │  │  (fs::rename)       │  │
+│  └─────────────┘  └──────┬──────┘  └─────────────────────┘  │
+└──────────────────────────┼──────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Ollama (Podman Container)                  │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                  Moondream Model                     │    │
+│  │                  (Vision LLM ~1.6GB)                 │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+----
+
+=== Key Files
+
+[cols="2,3,1"]
+|===
+|Path |Purpose |Format
+
+|`src/main.rs`
+|Core application logic
+|Rust
+
+|`config.ncl`
+|User configuration
+|Nickel
+
+|`Justfile`
+|Task runner recipes
+|Just
+
+|`flake.nix`
+|Reproducible builds
+|Nix
+
+|`Containerfile`
+|Container build spec
+|OCI
+|===
+
+== Code Conventions
+
+=== Rust Style
+
+[source,rust]
+----
+// SPDX header required on all files
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2025 Author <handle>
+
+// Use thiserror for custom errors
+#[derive(Error, Debug)]
+enum MyError {
+    #[error("Description: {0}")]
+    Variant(String),
+}
+
+// Async with tokio
+#[tokio::main]
+async fn main() -> Result<(), MyError> {
+    // Implementation
+}
+----
+
+=== Important Patterns
+
+1. **Error Handling**: Use `thiserror` for errors, `?` operator for propagation
+2. **Async**: All I/O operations are async via `tokio`
+3. **Logging**: Use `tracing` crate with structured logging
+4. **Configuration**: Loaded from Nickel, CLI overrides supported
+
+== Common Tasks
+
+=== Building
+
+[source,bash]
+----
+# Development build
+just build
+
+# Release build
+just build-release
+
+# With Nix
+nix build
+----
+
+=== Testing
+
+[source,bash]
+----
+# Run tests
+just test
+
+# With coverage
+just test-coverage
+----
+
+=== Running
+
+[source,bash]
+----
+# Start AI engine first
+just start-engine
+
+# Run scanner
+just watch
+
+# Dry run (no changes)
+just watch-dry
+----
+
+== RSR Compliance Checklist
+
+This project maintains RSR Gold compliance:
+
+=== Category 1: Foundational Infrastructure
+* [x] `flake.nix` - Nix reproducibility
+* [x] `config.ncl` - Nickel configuration
+* [x] `Justfile` - Task runner (20+ recipes)
+* [x] `Containerfile` - Podman (not Docker)
+* [x] Chainguard Wolfi base image
+
+=== Category 2: Documentation
+* [x] `README.adoc`
+* [x] `LICENSE.txt` (SPDX: MIT)
+* [x] `SECURITY.md`
+* [x] `CODE_OF_CONDUCT.adoc`
+* [x] `CONTRIBUTING.adoc`
+* [x] `FUNDING.yml`
+* [x] `GOVERNANCE.adoc`
+* [x] `MAINTAINERS.md`
+* [x] `.gitignore`
+* [x] `.gitattributes`
+* [x] `.well-known/security.txt`
+* [x] `.well-known/ai.txt`
+* [x] `.well-known/provenance.json`
+* [x] `.well-known/humans.txt`
+* [x] `REVERSIBILITY.md`
+* [x] `ROADMAP.md`
+* [x] `CHANGELOG.md`
+
+=== Category 3: Security
+* [x] Rust (memory safety)
+* [x] No `unsafe` blocks
+* [x] Local-only processing
+* [x] Non-root containers
+* [x] SPDX headers on all files
+
+=== Category 4: Architecture
+* [x] Offline-first design
+* [x] CRDT-ready architecture
+* [x] Reversible operations
+* [x] Event-driven (notify)
+
+== AI Assistant Guidelines
+
+When working on this codebase:
+
+=== Do
+
+* Add SPDX headers to all new files
+* Follow Rust idioms (use clippy suggestions)
+* Write tests for new functionality
+* Update CHANGELOG.md for notable changes
+* Use the Justfile for common operations
+* Maintain RSR Gold compliance
+
+=== Don't
+
+* Use `unsafe` Rust without justification
+* Add external API dependencies (keep local-only)
+* Skip tests or documentation
+* Use JavaScript/TypeScript (per RSR)
+* Use Docker (use Podman)
+* Add telemetry or tracking
+
+=== Code Review Checklist
+
+When reviewing/generating code:
+
+[source]
+----
+[ ] SPDX header present
+[ ] No unsafe code
+[ ] Tests included
+[ ] clippy clean
+[ ] Documentation updated
+[ ] RSR compliance maintained
+----
+
+== Prompt Engineering
+
+=== For Image Analysis
+
+The prompt used for Moondream:
+
+[source]
+----
+Analyze this image and generate a concise, descriptive filename
+(max 5 words). Use snake_case. Do not include the file extension.
+Return ONLY the filename, nothing else.
+----
+
+Key characteristics:
+- Explicit output format
+- Length constraint
+- Style guidance (snake_case)
+- Instruction to avoid extras
+
+== Dependencies
+
+=== Runtime Dependencies
+
+[cols="1,2,1"]
+|===
+|Crate |Purpose |Version
+
+|notify |File system events |6.1
+|reqwest |HTTP client |0.12
+|tokio |Async runtime |1.40
+|serde |Serialization |1.0
+|clap |CLI parsing |4.5
+|tracing |Logging |0.1
+|===
+
+=== External Dependencies
+
+[cols="1,2"]
+|===
+|Component |Purpose
+
+|Ollama |LLM inference server
+|Moondream |Vision model (~1.6GB)
+|Podman |Container runtime
+|===
+
+== Troubleshooting
+
+=== Common Issues
+
+[cols="2,3"]
+|===
+|Issue |Solution
+
+|"Connection refused" from Ollama
+|Run `just start-engine`
+
+|Slow inference
+|Ensure Moondream model is loaded: `just pull-model`
+
+|Files not detected
+|Check watch directory permissions
+
+|Empty filename suggestions
+|Verify image is valid and readable
+|===
+
+== Contact & Resources
+
+* Repository: https://gitlab.com/hyperpolymath/panoptes
+* Issues: GitLab Issues
+* Security: See `SECURITY.md`
+* Maintainer: @hyperpolymath
+
+== Version
+
+[cols="1,1"]
+|===
+|Document Version |1.0.0
+|Last Updated |2025-11-27
+|Panoptes Version |1.0.0
+|RSR Version |1.0.0
+|===

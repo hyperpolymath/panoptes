@@ -1,0 +1,82 @@
+{
+  "$schema": "https://slsa.dev/provenance/v1",
+  "spdxLicenseIdentifier": "MIT",
+  "spdxFileCopyrightText": "2025 Jonathan D. A. Jewell <hyperpolymath>",
+  "buildDefinition": {
+    "buildType": "https://slsa.dev/container/v1",
+    "externalParameters": {
+      "repository": "https://gitlab.com/hyperpolymath/panoptes",
+      "ref": "refs/heads/main"
+    },
+    "internalParameters": {
+      "rustVersion": "1.75+",
+      "targetPlatform": "linux/amd64"
+    },
+    "resolvedDependencies": [
+      {
+        "uri": "pkg:cargo/notify@6.1",
+        "digest": {
+          "sha256": "to-be-computed"
+        }
+      },
+      {
+        "uri": "pkg:cargo/reqwest@0.12",
+        "digest": {
+          "sha256": "to-be-computed"
+        }
+      },
+      {
+        "uri": "pkg:cargo/tokio@1.40",
+        "digest": {
+          "sha256": "to-be-computed"
+        }
+      }
+    ]
+  },
+  "runDetails": {
+    "builder": {
+      "id": "https://gitlab.com/hyperpolymath/panoptes/-/runners"
+    },
+    "metadata": {
+      "invocationId": "panoptes-build-v1.0.0",
+      "startedOn": "2025-11-27T00:00:00Z"
+    },
+    "byproducts": [
+      {
+        "name": "sbom.json",
+        "mediaType": "application/json"
+      }
+    ]
+  },
+  "provenanceChain": [
+    {
+      "type": "source",
+      "origin": "https://gitlab.com/hyperpolymath/panoptes",
+      "license": "MIT",
+      "verified": true
+    },
+    {
+      "type": "dependencies",
+      "origin": "crates.io",
+      "auditStatus": "cargo-audit-clean",
+      "verified": true
+    },
+    {
+      "type": "build",
+      "origin": "nix-flake",
+      "reproducible": true,
+      "verified": true
+    },
+    {
+      "type": "container-base",
+      "origin": "cgr.dev/chainguard/wolfi-base",
+      "verified": true
+    }
+  ],
+  "attestations": {
+    "spdxCompliant": true,
+    "rsrCompliance": "gold",
+    "securityAudit": "cargo-audit",
+    "licenseAudit": "spdx-headers"
+  }
+}

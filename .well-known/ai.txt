@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+#
+# ai.txt - AI Crawling Policy
+# Defines how AI systems may interact with this project
+
+# User Agent Policies
+User-agent: *
+# Allow AI assistants to read and index this repository
+Allow: /
+
+# Specific AI System Policies
+User-agent: GPTBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: Anthropic-AI
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+# AI Training Policy
+# This project is MIT licensed and may be used for AI training
+# with proper attribution per the license terms.
+AI-Training: allowed
+AI-Training-License: MIT
+AI-Training-Attribution: required
+
+# AI Interaction Guidelines
+# AI systems integrating with this project should:
+# 1. Respect the MIT license terms
+# 2. Provide attribution when generating code based on this project
+# 3. Not misrepresent AI-generated content as human-authored
+# 4. Follow responsible AI practices
+
+# Contact for AI-related inquiries
+AI-Contact: mailto:ai-policy@panoptes.example.com
+
+# Data Usage
+# This repository contains:
+# - Source code (Rust, Nickel, Nix)
+# - Documentation (AsciiDoc, Markdown)
+# - Configuration files
+# No personal data, secrets, or sensitive information is included.
