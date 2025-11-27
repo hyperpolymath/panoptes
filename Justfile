@@ -90,17 +90,35 @@ engine-status:
 # Run the scanner in foreground
 watch:
     @echo "Starting Panoptes Scanner..."
-    ./target/release/{{app_name}} --config config.ncl
+    ./target/release/{{app_name}} --config config.json
 
 # Run scanner in debug mode with verbose logging
 watch-debug:
     @echo "Starting Panoptes Scanner (debug mode)..."
-    ./target/debug/{{app_name}} --config config.ncl --verbose
+    ./target/debug/{{app_name}} --config config.json --verbose
 
 # Run scanner in dry-run mode (no actual renames)
 watch-dry:
     @echo "Starting Panoptes Scanner (dry-run mode)..."
-    ./target/release/{{app_name}} --config config.ncl --dry-run --verbose
+    ./target/release/{{app_name}} --config config.json --dry-run --verbose
+
+# === Undo & History ===
+
+# Undo the last rename
+undo:
+    ./target/release/panoptes-undo --count 1
+
+# Undo multiple renames
+undo-all:
+    ./target/release/panoptes-undo --count 0
+
+# Preview what would be undone
+undo-dry:
+    ./target/release/panoptes-undo --dry-run --count 1
+
+# List all rename history
+history:
+    ./target/release/panoptes-undo --list
 
 # === Testing ===
 

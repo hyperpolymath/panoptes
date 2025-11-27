@@ -40,3 +40,7 @@ panic = "abort"
 [[bin]]
 name = "panoptes"
 path = "src/main.rs"
+
+[[bin]]
+name = "panoptes-undo"
+path = "src/bin/panoptes-undo.rs"

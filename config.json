@@ -1,0 +1,16 @@
+{
+  "watch_path": "./watch",
+  "ai_engine": {
+    "url": "http://localhost:11434/api/generate",
+    "model": "moondream"
+  },
+  "rules": {
+    "sanitize": true,
+    "date_prefix": true,
+    "max_length": 50
+  },
+  "prompts": {
+    "image": "Analyze this image and generate a concise, descriptive filename (max 5 words). Use snake_case. Do not include the file extension. Return ONLY the filename.",
+    "document": "Summarize the header or title of this document text into a concise filename (max 5 words). Use snake_case. Return ONLY the filename."
+  }
+}
