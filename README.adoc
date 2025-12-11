@@ -1,76 +1,267 @@
-= Panoptes
-Jonathan D.A. Jewell <jonathan.jewell@gmail.com>
-:toc: macro
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+
+= Panoptes: Local AI File Scanner
+Jonathan D. A. Jewell <hyperpolymath>
+v1.0.0, 2025-11-27
+:toc: left
+:toclevels: 3
 :icons: font
 :source-highlighter: rouge
 :experimental:
-:url-github: https://github.com/hyperpolymath/Panoptes
-:url-gitlab: https://gitlab.com/hyperpolymath/Panoptes
-:url-bitbucket: https://bitbucket.org/hyperpolymath/Panoptes
-:url-codeberg: https://codeberg.org/hyperpolymath/Panoptes
+:sectanchors:
 
-All-seeing monitoring and observability platform
-
-image:https://img.shields.io/badge/RSR-Certified-gold[RSR Certified]
-image:https://img.shields.io/badge/License-AGPL%20v3-blue[License]
-
-toc::[]
+image:https://img.shields.io/badge/license-MIT-blue.svg[License: MIT]
+image:https://img.shields.io/badge/RSR-Gold-gold.svg[RSR Gold Compliant]
+image:https://img.shields.io/badge/rust-1.75+-orange.svg[Rust 1.75+]
 
 == Overview
 
-Panoptes is part of the link:https://rhodium.sh[Rhodium Standard] (RSR) ecosystem.
+Panoptes is a declarative, Rust-based file system watcher that uses local AI (Moondream via Ollama) to automatically rename images and documents based on their visual content. Named after the all-seeing giant of Greek mythology, Panoptes watches your directories and intelligently organizes incoming files.
 
-Domain: *software-development*
+=== Key Features
 
-== Installation
+* *Zero API costs* - Uses local AI models (Moondream ~1.6GB)
+* *Privacy-preserving* - All processing happens on your machine
+* *Rust-powered* - Memory-safe, fast, and reliable
+* *Declarative config* - Nickel-based type-safe configuration
+* *Container-ready* - Podman-native with Chainguard Wolfi base
+* *RSR Gold compliant* - Full Rhodium Standard Repository compliance
+
+== Prerequisites
+
+* https://www.rust-lang.org/[Rust] 1.75+ (stable)
+* https://podman.io/[Podman] 4.0+
+* https://github.com/casey/just[Just] command runner
+* https://nickel-lang.org/[Nickel] (optional, for config validation)
+* https://nixos.org/[Nix] (optional, for reproducible builds)
+
+== Quick Start
 
 [source,bash]
 ----
-# Clone from GitHub (primary)
-git clone {url-github}
+# Clone the repository
+git clone https://gitlab.com/hyperpolymath/panoptes.git
+cd panoptes
 
-# Or from mirrors
-git clone {url-gitlab}
-git clone {url-codeberg}
+# Setup environment
+just setup
+
+# Start the AI engine (downloads Moondream ~1.6GB)
+just start-engine
+
+# Build the scanner
+just build-release
+
+# Start watching files
+just watch
 ----
 
-== RSR Stack
+== Installation
 
-This project follows RSR conventions:
+=== Using Nix (Recommended)
 
-* ✅ ReScript for frontend/logic
-* ✅ Deno for JS runtime
-* ✅ WASM for performance-critical code
-* ✅ Rust/OCaml/Haskell for systems/proofs
-* ✅ Guile/Scheme for configuration
-* ❌ No TypeScript
-* ❌ No Go
-* ❌ No npm
+[source,bash]
+----
+# Enter development shell
+nix develop
 
-== Mirrors
+# Or build directly
+nix build
+----
 
-[cols="1,2"]
+=== Using Cargo
+
+[source,bash]
+----
+cargo build --release
+cp target/release/panoptes ~/.local/bin/
+----
+
+=== Using Container
+
+[source,bash]
+----
+podman build -t panoptes:latest .
+podman run --rm -v ~/Downloads/scan:/watch:Z --network host panoptes:latest
+----
+
+== Configuration
+
+Panoptes uses Nickel for type-safe configuration. Edit `config.ncl`:
+
+[source,nickel]
+----
+{
+  watch_path = "/var/home/core/Downloads/scan_input",
+  ai_engine = {
+    url = "http://localhost:11434/api/generate",
+    model = "moondream",
+  },
+  rules = {
+    sanitize = true,
+    date_prefix = true,
+    max_length = 50,
+  },
+}
+----
+
+=== CLI Options
+
+[cols="1,3"]
 |===
-| Platform | URL
+|Option |Description
 
-| GitHub (primary) | {url-github}
-| GitLab | {url-gitlab}
-| Bitbucket | {url-bitbucket}
-| Codeberg | {url-codeberg}
+|`-c, --config <PATH>`
+|Path to configuration file (default: `config.ncl`)
+
+|`-w, --watch <DIR>`
+|Directory to watch (overrides config)
+
+|`-m, --model <MODEL>`
+|AI model to use (default: `moondream`)
+
+|`--api-url <URL>`
+|Ollama API URL
+
+|`-v, --verbose`
+|Enable verbose logging
+
+|`--dry-run`
+|Don't rename files, just log suggestions
 |===
 
-== License
+== Usage Examples
 
-Licensed under AGPL-3.0-or-later OR LicenseRef-Palimpsest-0.5.
+=== Basic Usage
 
-See link:LICENSE[LICENSE] for details.
+[source,bash]
+----
+# Watch default directory
+panoptes --config config.ncl
+
+# Watch specific directory with verbose output
+panoptes --watch ~/Pictures/Unsorted --verbose
+
+# Test without making changes
+panoptes --watch ~/Downloads --dry-run
+----
+
+=== Using the Launcher Script
+
+[source,bash]
+----
+# Start scanner daemon
+./start_scanner.oil start
+
+# Check status
+./start_scanner.oil status
+
+# View logs
+./start_scanner.oil logs
+
+# Stop scanner
+./start_scanner.oil stop
+----
+
+== Architecture
+
+[source]
+----
++-------------------+     +------------------+     +----------------+
+|  File System      |     |    Panoptes      |     |    Ollama      |
+|  (inotify/kqueue) | --> |    (Rust)        | --> |  (Moondream)   |
++-------------------+     +------------------+     +----------------+
+                                |                        |
+                                v                        |
+                          +----------+                   |
+                          | Renamed  | <-----------------+
+                          |  Files   |   AI Suggestion
+                          +----------+
+----
+
+=== Why Moondream?
+
+Moondream is a "Tiny Vision Language Model" specifically designed for edge devices:
+
+* *Size*: ~1.6GB (vs LLaVA at 4GB+)
+* *Speed*: Optimized for CPU inference
+* *Quality*: Excellent for descriptive tasks
+* *License*: Apache 2.0
+
+== Development
+
+[source,bash]
+----
+# Run tests
+just test
+
+# Format code
+just fmt
+
+# Run linter
+just lint
+
+# Full validation
+just validate
+----
+
+== RSR Compliance
+
+This repository maintains *RSR Gold* compliance:
+
+* SPDX headers on all source files
+* Nickel configuration (infrastructure-as-code)
+* Podman with Chainguard Wolfi base images
+* Complete documentation suite
+* Security-first architecture
+
+Run `just validate` to verify compliance.
+
+== Troubleshooting
+
+=== AI Engine Not Responding
+
+[source,bash]
+----
+# Check if Ollama is running
+just engine-status
+
+# Restart the engine
+just restart-engine
+
+# Verify model is loaded
+podman exec panoptes-llm ollama list
+----
+
+=== Scanner Not Detecting Files
+
+* Ensure the watch directory exists
+* Check file permissions
+* Verify with `--verbose` flag
+
+=== Performance Issues
+
+* Moondream is optimized for CPU but may be slow on older hardware
+* Consider increasing the debounce interval in config
+* Ensure adequate system memory (4GB+ recommended)
 
 == Contributing
 
-See link:CONTRIBUTING.adoc[CONTRIBUTING.adoc].
+See link:CONTRIBUTING.adoc[CONTRIBUTING.adoc] for guidelines.
 
-== Metadata
+== License
 
-* Domain: software-development
-* Framework: RSR (Rhodium Standard Repository)
-* Dublin Core: link:.well-known/dc.xml[.well-known/dc.xml]
+This project is licensed under the MIT License - see link:LICENSE.txt[LICENSE.txt] for details.
+
+== Related Resources
+
+* https://ollama.ai/[Ollama] - Local LLM runtime
+* https://moondream.ai/[Moondream] - Tiny Vision Language Model
+* https://youtu.be/rename-images-ollama[Rename Your Images With Ollama] - Tutorial video
+
+== Acknowledgements
+
+* The Moondream team for the excellent edge-optimized vision model
+* The Ollama project for making local AI accessible
+* The Rust community for the excellent ecosystem
