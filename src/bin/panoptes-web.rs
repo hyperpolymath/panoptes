@@ -69,11 +69,11 @@ async fn main() -> Result<()> {
     info!("Database: {}", config.database.path);
 
     let addr = format!("{}:{}", config.web.host, config.web.port);
-    info!("Starting web server at http://{}", addr);
+    info!("Starting web server at https://{}", addr);
 
     // Open browser if requested
     if args.open {
-        let url = format!("http://{}", addr);
+        let url = format!("https://{}", addr);
         if let Err(e) = open_browser(&url) {
             error!("Failed to open browser: {}", e);
         }

@@ -423,7 +423,7 @@ pub async fn start_server(config: AppConfig, db: Database) -> crate::Result<()> 
     let addr = format!("{}:{}", config.web.host, config.web.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
-    info!("Web UI available at http://{}", addr);
+    info!("Web UI available at https://{}", addr);
 
     let router = create_router(state);
     axum::serve(listener, router).await
