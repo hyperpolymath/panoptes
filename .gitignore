@@ -1,74 +1,79 @@
-# SPDX-License-Identifier: MIT
-# SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# RSR-compliant .gitignore
 
-# === Rust ===
-/target/
-Cargo.lock
-**/*.rs.bk
-*.pdb
-
-# === Nix ===
-/result
-/result-*
-.direnv/
-.envrc.local
-
-# === IDE ===
-.idea/
-.vscode/
+# OS & Editor
+.DS_Store
+Thumbs.db
 *.swp
 *.swo
 *~
-.*.sw?
+.idea/
+.vscode/
 
-# === OS ===
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Build
+/target/
+/_build/
+/build/
+/dist/
+/out/
 
-# === Logs ===
-*.log
-logs/
-panoptes.log
+# Dependencies
+/node_modules/
+/vendor/
+/deps/
+/.elixir_ls/
 
-# === Runtime ===
-*.pid
-*.pid.lock
+# Rust
+# Cargo.lock  # Keep for binaries
 
-# === Build Artifacts ===
-*.o
-*.a
-*.so
-*.dylib
+# Elixir
+/cover/
+/doc/
+*.ez
+erl_crash.dump
 
-# === Test Coverage ===
-tarpaulin-report.html
-coverage/
-*.profraw
-*.profdata
+# Julia
+*.jl.cov
+*.jl.mem
+/Manifest.toml
 
-# === Generated Files ===
-sbom.json
+# ReScript
+/lib/bs/
+/.bsb.lock
 
-# === Secrets (should never exist, but prevent accidents) ===
+# Python (SaltStack only)
+__pycache__/
+*.py[cod]
+.venv/
+
+# Ada/SPARK
+*.ali
+/obj/
+/bin/
+
+# Haskell
+/.stack-work/
+/dist-newstyle/
+
+# Chapel
+*.chpl.tmp.*
+
+# Secrets
 .env
 .env.*
 *.pem
 *.key
 secrets/
-credentials/
 
-# === Container ===
-.container-*
+# Test/Coverage
+/coverage/
+htmlcov/
 
-# === Temporary ===
-tmp/
-temp/
+# Logs
+*.log
+/logs/
+
+# Temp
+/tmp/
 *.tmp
-*.temp
 *.bak
-*.backup
