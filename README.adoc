@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: PMPL-1.0
 // SPDX-FileCopyrightText: 2025 Jonathan D. A. Jewell <hyperpolymath>
 
 = Panoptes: Local AI File Scanner
@@ -252,7 +252,7 @@ See link:CONTRIBUTING.adoc[CONTRIBUTING.adoc] for guidelines.
 
 == License
 
-This project is licensed under the MIT License - see link:LICENSE.txt[LICENSE.txt] for details.
+This project is licensed under the Palimpsest-MPL-1.0 License - see link:LICENSE.txt[LICENSE.txt] for details.
 
 == Related Resources
 
